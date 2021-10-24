@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2018 Peter W Leong
+-->
+<!--suppress CheckEmptyScriptTag -->
+<html>
+<head>
+    <title>beatfix</title>
+    <meta charset="utf-8"/>
+    <link rel="icon"
+          type="image/png"
+          href="./favicon.png"/>
+    <link rel="manifest" href="./manifest.json"/>
+    <script type="application/javascript">
+        if (window.attachEvent) {
+            window.attachEvent('onresize', resizeSvg);
+        }
+        else if (window.addEventListener) {
+            window.addEventListener('resize', resizeSvg, true);
+        }
+        else {
+            //The browser does not support Javascript event binding
+        }
+
+        function resizeSvg() {
+            var side = Math.min(window.innerHeight, window.innerWidth);
+            theSvg.setAttribute("height", side.toString());
+            theSvg.setAttribute("width", side.toString());
+        }
+
+        function tempoChange(delta) {
+            setRate(rate + delta);
+        }
+
+        function syncTempoText() {
+            theTempoText.innerHTML = rate.toString();
+        }
+
+        function findStatorSpec(bpm, beatsPerRev) {
+            var numStators = calcNumStators(bpm, beatsPerRev);
+            var segmentLength = circumference / numStators;
+            return {
+                numStators: numStators,
+                segmentLength: segmentLength,
+                beatLength: circumference / beatsPerRev,
+                gapLength: gap,
+                statorLength: segmentLength - gap
+            };
+        }
+
+        function sync() {
+            rate = Math.max(minRate, rate);
+            rate = Math.min(220, rate);
+            syncTempoText();
+
+            var statorConfig = statorConfigs[statorConfigIndex];
+            theRatioText.innerHTML = statorConfig.code;
+
+            var dur = 60 * statorConfig.beatsPerRev / rate;
+            var durStr = dur.toString() + "s";
+            theTiming.setAttribute("dur", durStr);
+
+            var spec = findStatorSpec(rate, statorConfig.beatsPerRev);
+            theCircle.setAttribute("stroke-dasharray", spec.statorLength.toString() + "," + spec.gapLength.toString());
+
+            var beatLengthStr = spec.beatLength.toString();
+
+            // primary rotor does not repeat
+            var rotor1Length = Math.min(spec.beatLength, spec.segmentLength); // for 2 or 3 segments
+            var rotor1Dash = rotor1Length.toString() + "," + circumference.toString();
+            rotor1.setAttribute("stroke-dasharray", rotor1Dash);
+            var rotor1Offset = (360 / statorConfig.beatsPerRev) - (360 / spec.numStators);
+            rotor1.setAttribute("transform", "rotate(" + rotor1Offset.toString() + ",120,120)");
+
+            // auxiliary rotor repeats
+            var rotor2Dash = beatLengthStr + "," + beatLengthStr;
+            rotor2.setAttribute("stroke-dasharray", rotor2Dash);
+
+            var isOdd = !!(statorConfig.beatsPerRev & 1);
+            if (isOdd) {
+                var rotor2Offset = 360 / statorConfig.beatsPerRev;
+                rotor2.setAttribute("transform", "rotate(" + rotor2Offset.toString() + ",120,120)");
+            }
+            else rotor2.removeAttribute("transform");
+
+            var rotate = -90 + (spec.gapLength / 2 * 360 / circumference);
+            theCircle.setAttribute("transform", "rotate(" + rotate.toString() + ",120,120)");
+        }
+
+        function setRate(i) {
+            rate = i;
+            sync();
+        }
+
+        function toggleDisplayRatio() {
+            statorConfigIndex = (statorConfigIndex + 1) % statorConfigs.length;
+            sync();
+        }
+
+        function showInfo() {
+            var year = new Date().getFullYear();
+            alert("Copyright " + year.toString() + " Peter W Leong\n\n   https://beatfix.freshcode.biz");
+        }
+
+        function endSamples() {
+            timerHandle = null;
+            sampleTimestamps = [];
+            syncTempoText();
+        }
+
+        function calcRate(intervalMillis) {
+            return Math.round(60000 / intervalMillis);
+        }
+
+        function sample(timestampMillis) {
+            if (timerHandle !== null) clearTimeout(timerHandle);
+            timerHandle = setTimeout(endSamples, 60000 / (minRate - 1));
+
+            sampleTimestamps.push(timestampMillis);
+            if (sampleTimestamps.length < 3) theTempoText.innerHTML = sampleTimestamps.length.toString() + "..";
+            else {
+                while (sampleTimestamps.length > 4) sampleTimestamps.shift(); // at most 3 intervals
+
+                var maxIx = sampleTimestamps.length - 1;
+                var totalDuration = sampleTimestamps[maxIx] - sampleTimestamps[0];
+                var avgInterval = totalDuration / maxIx;
+                setRate(calcRate(avgInterval));
+                sync();
+            }
+        }
+
+        // Precision management ////////////////////////////////////////////////////////////////////////////////////////
+
+        function calcNumStators(bpm, beatsPerRev) {
+            if (beatsPerRev >= 5) return beatsPerRev;
+            if (bpm > 125) return beatsPerRev;
+            return beatsPerRev * 2;
+        }
+
+        function calcStatorConfig(beatsPerRev) {
+            return {
+                code: "x" + beatsPerRev.toString(),
+                beatsPerRev: beatsPerRev
+            };
+        }
+    </script>
+    <style type="text/css">
+        body {
+            background-color: #000000;
+            overflow: hidden;
+        }
+
+        text {
+            text-anchor: middle;
+            dominant-baseline: central;
+            fill: green;
+            font-family: Arial, Helvetica, sans-serif;
+            cursor: pointer;
+
+            /* Prevent selection */
+            -moz-user-select: -moz-none;
+            -khtml-user-select: none;
+            -webkit-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+    </style>
+    <!--  iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes"/>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
+    <meta name="apple-mobile-web-app-title" content="beatfix"/>
+    <link rel="apple-touch-icon" href="images/screenshot-152.png"/>
+    <!-- Windows -->
+    <meta name="msapplication-TileImage" content="images/screenshot-144.png"/>
+    <meta name="msapplication-TileColor" content="black"/>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 245 245">
+    <g>
+        <circle cx="120" cy="120" r="105" fill="none" stroke="#030" stroke-dasharray="43,700" stroke-width="20"
+                stroke-linecap="butt" id="rotor2"/>
+        <circle cx="120" cy="120" r="105" fill="none" stroke="yellow" stroke-dasharray="43,700" stroke-width="20"
+                stroke-linecap="butt" id="rotor1"/>
+        <animateTransform id="timing"
+                          attributeType="xml"
+                          attributeName="transform"
+                          type="rotate"
+                          from="0 120 120"
+                          to="360 120 120"
+                          dur="3s"
+                          repeatCount="indefinite"/>
+    </g>
+    <circle cx="120" cy="120" r="105" fill="none" stroke="#222" stroke-dasharray="43,12" stroke-width="21"
+            stroke-linecap="butt" id="circle"/>
+
+    <text x="120" y="125" style="font-size:450%" onclick="sample(Date.now())" id="tempoText">199</text>
+    <text x="90" y="65" style="font-size: 200%" onclick="tempoChange(5)">&nbsp;+</text>
+    <text x="90" y="175" style="font-size: 250%" onclick="tempoChange(-5)">&nbsp;-</text>
+    <text x="150" y="65" style="font-size: 200%" onclick="tempoChange(1)">+&nbsp;</text>
+    <text x="150" y="175" style="font-size: 250%" onclick="tempoChange(-1)">-&nbsp;</text>
+    <text x="20" y="20" style="font-size: 200%" onclick="showInfo()">&copy;</text>
+    <text x="22" y="222" style="font-size: 250%" onclick="toggleDisplayRatio()" id="ratioText">x?</text>
+    <text x="215" y="20" style="font-size: 250%" onclick="tempoChange(20)">&nbsp;+</text>
+    <text x="213" y="220" style="font-size: 310%" onclick="tempoChange(-20)">&nbsp;-</text>
+</svg>
+<script type="application/javascript">
+    var theSvg = document.getElementsByTagName("svg").item(0);
+    var theTiming = document.getElementById("timing");
+    var theTempoText = document.getElementById("tempoText");
+    var theRatioText = document.getElementById("ratioText");
+    var theCircle = document.getElementById("circle");
+    var rotor1 = document.getElementById("rotor1");
+    var rotor2 = document.getElementById("rotor2");
+    var rate = 80;
+    var circumference = Math.PI * 2 * 105; // radius of circle
+    var minRate = 20;
+    var sampleTimestamps = [];
+    var timerHandle = null;
+
+    var maxNumStators = 21;
+    var gap = circumference / maxNumStators / 2;
+
+    var statorConfigs = [3, 4, 5, 6, 7].map(calcStatorConfig);
+    var statorConfigIndex = 1; // index of desired stator config
+
+    resizeSvg();
+    sync();
+</script>
+</body>
+</html>
